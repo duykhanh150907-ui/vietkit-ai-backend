@@ -19,9 +19,6 @@ API_KEY = os.getenv("GEMINI_API_KEY")
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
-# Khởi tạo siêu trí tuệ Gemini
-model = genai.GenerativeModel('gemini-pro')
-
 class ChatRequest(BaseModel):
     message: str
 
@@ -59,10 +56,20 @@ HƯỚNG DẪN TRÌNH BÀY KẾT QUẢ:
 @app.post("/api/chat")
 async def chat_with_ai(request: ChatRequest):
     try:
+        # Tự động dò tìm model khả dụng của Google
+        cac_model_dang_mo = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Ưu tiên lấy model flash cho nhanh, nếu không có thì lấy model đầu tiên mà Google cấp phép
+        model_name = next((m for m in cac_model_dang_mo if 'flash' in m), cac_model_dang_mo[0])
+        model = genai.GenerativeModel(model_name)
+
         # Nhồi kịch bản và câu hỏi vào cho Gemini xử lý
         full_prompt = f"{system_prompt}\n\nKhách hàng hỏi: {request.message}\nTrợ lý trả lời:"
         response = model.generate_content(full_prompt)
         
         return {"reply": response.text}
     except Exception as e:
-        return {"reply": f"Lỗi gọi Gemini: {str(e)}"}
+        # In lỗi thực sự ra cửa sổ Log của Render để lập trình viên theo dõi
+        print(f"Lỗi gọi Gemini chi tiết: {str(e)}")
+        # Trả về câu nói nhẹ nhàng cho khách hàng không bị hoang mang
+        return {"reply": "Hệ thống đang nghỉ ngơi chút xíu, bạn chờ vài giây rồi hỏi lại nha!"}
