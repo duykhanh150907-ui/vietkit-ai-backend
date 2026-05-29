@@ -1,14 +1,12 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+import google.generativeai as genai
 
-# 1. Khởi tạo Web Server
 app = FastAPI()
 
-# Cho phép trang web HTML giao tiếp với Server Python mà không bị chặn bảo mật (CORS)
+# Mở cửa cho trang web kết nối
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,67 +14,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Tải mô hình AI (Chỉ tải 1 lần khi bật server)
-print("Đang khởi động não bộ AI...")
-model = SentenceTransformer('keepitreal/vietnamese-sbert')
+# Lấy chìa khóa API từ "két sắt" của Render
+API_KEY = os.getenv("GEMINI_API_KEY")
+if API_KEY:
+    genai.configure(api_key=API_KEY)
 
-# 1. Bổ sung thêm trường "link" vào cơ sở dữ liệu
-kits = [
-    {
-        "name": "Đông Hồ", 
-        "desc": "Tranh lợn âm dương Đông Hồ, con lợn béo tốt, gà đàn, biểu tượng của sự sung túc, no đủ và nảy nở.",
-        "link": "#kit-collection" # Sau này bạn có thể thay bằng link trang chi tiết, VD: "/dong-ho.html"
-    },
-    {
-        "name": "Bát Tràng", 
-        "desc": "Họa tiết hoa sen xanh trên nền gốm Bát Tràng, con lợn đất nung, mang vẻ đẹp thanh tao, thuần khiết và truyền thống.",
-        "link": "#kit-collection"
-    },
-    {
-        "name": "Sơn Mài", 
-        "desc": "Tranh sơn mài phong cảnh đồng quê, màu vàng son rực rỡ, lộng lẫy.",
-        "link": "#kit-collection"
-    }
-]
-
-# Chuyển đổi dữ liệu thành ma trận sẵn
-kit_vectors = model.encode([k["desc"] for k in kits])
-print("Server AI đã sẵn sàng lắng nghe!")
+# Khởi tạo siêu trí tuệ Gemini
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 class ChatRequest(BaseModel):
     message: str
 
+# Kỷ luật thép cho AI
+system_prompt = """
+Bạn là "Trợ lý AI Việt Kit", một người hướng dẫn tận tâm của website Việt Kit.
+
+QUY TẮC TỐI THƯỢNG (BẮT BUỘC TUÂN THỦ):
+1. CHỈ SỬ DỤNG thông tin từ Danh sách bộ Kit được cung cấp bên dưới. 
+2. TUYỆT ĐỐI KHÔNG tự bịa ra bất kỳ bộ Kit, tên họa tiết, đường link, hay hình ảnh nào khác không có trong danh sách.
+3. Nếu khách hàng hỏi về một họa tiết/chất liệu KHÔNG CÓ trong danh sách, BẠN PHẢI TRẢ LỜI: "Xin lỗi, hiện tại bộ sưu tập của Việt Kit chưa cập nhật họa tiết này. Bạn có muốn tham khảo các họa tiết về [kể tên 1-2 bộ kit có sẵn] không?"
+
+DANH SÁCH CÁC BỘ KIT HIỆN CÓ:
+1. Bộ Kit "Đông Hồ": Tranh lợn âm dương Đông Hồ, con lợn béo tốt, gà đàn, sung túc. 
+   - Link chi tiết: #kit-dongho 
+   - Link ảnh demo: https://placehold.co/150x100/8C6B5D/FFF?text=Dong+Ho
+
+2. Bộ Kit "Bát Tràng": Họa tiết hoa sen xanh, con lợn đất nung, thanh tao, gốm sứ. 
+   - Link chi tiết: #kit-battrang
+   - Link ảnh demo: https://placehold.co/150x100/6E2C24/FFF?text=Bat+Trang
+
+3. Bộ Kit "Sơn Mài": Tranh phong cảnh đồng quê, màu vàng son, lộng lẫy. 
+   - Link chi tiết: #kit-sonmai
+   - Link ảnh demo: https://placehold.co/150x100/333/FFF?text=Son+Mai
+
+HƯỚNG DẪN TRÌNH BÀY KẾT QUẢ:
+- Khi giới thiệu một bộ Kit, BẮT BUỘC phải dùng cấu trúc HTML sau để hiển thị ảnh và link:
+<div class="mt-2 p-2 border border-gray-200 rounded-lg bg-white">
+   <img src="LINK_ẢNH_DEMO" alt="Tên bộ kit" class="w-full h-auto rounded-md mb-2 object-cover">
+   <a href="LINK_CHI_TIẾT" class="font-inter font-bold text-[#8C6B5D] hover:text-[#6E2C24] hover:underline block text-center">Xem bộ Kit TÊN_BỘ_KIT</a>
+</div>
+- Trả lời ngắn gọn, thân thiện. Không dùng các ký tự Markdown như ** hay *. Chỉ dùng HTML.
+"""
+
 @app.post("/api/chat")
 async def chat_with_ai(request: ChatRequest):
-    user_query = request.message.lower()
-    
-    # Xử lý câu chào hỏi cơ bản
-    greetings = ["alo", "chào", "hi", "hello", "xin chào", "ê", "có ai không"]
-    if any(word in user_query for word in greetings) and len(user_query) < 15:
-        return {"reply": "Dạ alo! Trợ lý AI Việt Kit đang nghe đây. Bạn đang muốn tìm kiếm họa tiết hay tài liệu văn hóa gì ạ? 😊"}
-    
-    # Chuyển câu hỏi thành vector
-    query_vector = model.encode([request.message])
-    scores = cosine_similarity(query_vector, kit_vectors)[0]
-    
-    # 2. Lọc ra TẤT CẢ các kết quả có độ khớp trên mức cho phép (ví dụ: > 0.3)
-    matched_kits = []
-    threshold = 0.3 
-    
-    for i, score in enumerate(scores):
-        if score > threshold:
-            matched_kits.append((kits[i], score))
-            
-    # Sắp xếp kết quả từ cao xuống thấp
-    matched_kits.sort(key=lambda x: x[1], reverse=True)
-    
-    # 3. Tạo câu trả lời dạng HTML chứa Link
-    if len(matched_kits) > 0:
-        reply = "Tôi đã tìm thấy các bộ Kit có chứa họa tiết bạn cần. Bạn bấm vào link để xem chi tiết nhé:<br>"
-        for kit, _ in matched_kits:
-            # Gắn thẻ <a> để tạo link click được, xài class Tailwind cho đẹp
-            reply += f"<br>✨ <a href='{kit['link']}' class='font-inter font-bold text-[#8C6B5D] hover:text-[#6E2C24] hover:underline transition-colors'>{kit['name']}</a>"
-    else:
-        reply = "Chà, ý tưởng này thú vị quá nhưng kho dữ liệu của tôi chưa có bộ Kit nào thực sự khớp. Bạn miêu tả rõ hơn một chút về màu sắc hay chất liệu được không?"
+    try:
+        # Nhồi kịch bản và câu hỏi vào cho Gemini xử lý
+        full_prompt = f"{system_prompt}\n\nKhách hàng hỏi: {request.message}\nTrợ lý trả lời:"
+        response = model.generate_content(full_prompt)
         
-    return {"reply": reply}
+        return {"reply": response.text}
+    except Exception as e:
+        return {"reply": "Hệ thống đang quá tải một chút, bạn đợi xíu rồi hỏi lại nhé!"}
