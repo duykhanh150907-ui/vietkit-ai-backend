@@ -65,4 +65,4 @@ async def chat_with_ai(request: ChatRequest):
         
         return {"reply": response.text}
     except Exception as e:
-        return {"reply": "Hệ thống đang bận dọn dẹp xíu, bạn hỏi lại câu này sau nha!"}
+        return {"reply": f"Lỗi gọi Gemini: {str(e)}"}
