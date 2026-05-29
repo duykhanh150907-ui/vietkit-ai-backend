@@ -20,7 +20,7 @@ if API_KEY:
     genai.configure(api_key=API_KEY)
 
 # Khởi tạo siêu trí tuệ Gemini
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-pro')
 
 class ChatRequest(BaseModel):
     message: str
@@ -65,4 +65,4 @@ async def chat_with_ai(request: ChatRequest):
         
         return {"reply": response.text}
     except Exception as e:
-        return {"reply": f"Lỗi gọi Gemini: {str(e)}"}
+        return {"reply": "Hệ thống đang bận dọn dẹp xíu, bạn hỏi lại câu này sau nha!"}
